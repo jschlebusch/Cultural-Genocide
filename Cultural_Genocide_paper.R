@@ -1,9 +1,11 @@
 ####----------------------------------------------------------------------------
 #### CULTURAL GENOCIDE - A GLOBAL PERSPECTIVE
+####
+#### ANALYSIS
 #### 
 #### Jan
 ####
-#### 01/2025
+#### 01-02/2025
 ####----------------------------------------------------------------------------
 
 ##---- PACKAGES ----------------------------------------------------------------
@@ -11,60 +13,27 @@ library(tidyverse)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
-df_cg <- readxl::read_xlsx("CG_recoded_final.xlsx")
+df_cg <- readxl::read_xlsx("CG_policy_years.xlsx")%>%
+  rename_with(~ paste0("rev_", .), .cols = 4:12) %>%
+  mutate(across(4:12, ~ replace_na(., 0))) %>%
+  mutate(any_cg = as.integer(if_any(4:12, ~ . == 1)))
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
+df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
+  select(c(iso3c, Year, Polity2)) %>%
+  rename(iso3 = iso3c)
 ##------------------------------------------------------------------------------
 
 ##---- DATA PREPARATION --------------------------------------------------------
-
-#from periods to policy-group-country-year format
-
-expand_periods <- function(periods) {
-  periods <- gsub("\\*", "", periods) 
-  period_list <- unlist(strsplit(periods, ";\\s*")) 
-  
-  all_years <- unlist(lapply(period_list, function(period) {
-    if (grepl("-", period)) { 
-      range <- as.numeric(unlist(strsplit(period, "-")))
-      if (length(range) == 2 && all(!is.na(range))) {
-        return(seq(range[1], range[2]))
-      }
-    } else {
-      year <- as.numeric(period)
-      if (!is.na(year)) {
-        return(year)
-      }
-    }
-    return(NULL)  
-  }))
-  
-  return(unique(all_years))  
-}
-
-# expand dataframe
-df_cg_long <- df_cg %>%
-  rowwise() %>%
-  mutate(Year = list(expand_periods(Periods))) %>%
-  unnest(Year) %>%
-  mutate(Policy = as.factor(Policy), Value = 1) %>%
-  select(Country, Group, Year, Policy, Value)
-
-# observation period
-
-df_cg_long1945to2020 <- df_cg_long %>%
-  filter(Year >= 1945,
-         Year <= 2020)
-
-# policies as columns
-
-policy_names <- unique(df_cg$Policy)
-
-print(policy_names)
-
-df_cg_policies <- df_cg_long1945to2020 %>%
-  pivot_wider(names_from = Policy, values_from = Value)
-
-openxlsx::write.xlsx(df_cg_policies, "CG_policies_annual.xlsx")
+summary(df_cg)
+summary(df_nbp)
+summary(df_polity)
 
 
+df_nbpcg <- df_nbp %>%
+  left_join(df_cg, by = c("Country", "Group", "Year"))
 
+df_complete <- df_nbpcg %>%
+  left_join(df_polity, by = c("iso3", "Year")) %>%
+  distinct()
+
+##---- EDA ---------------------------------------------------------------------
