@@ -10,6 +10,7 @@
 
 ##---- PACKAGES ----------------------------------------------------------------
 library(tidyverse)
+library(ggplot2)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
@@ -82,6 +83,9 @@ df_complete <- df_complete %>%
 summary(as.factor(df_complete$any_cg))
 
 ##---- EDA ---------------------------------------------------------------------
+
+#---- CHECK VARS ---------------------------------------------------------------
+
 summary(as.factor(df_complete$IndigGp))
 summary(as.factor(df_complete$SpatialConc))
 
@@ -98,6 +102,29 @@ print(df_complete$SDM)
 
 summary(as.factor(df_complete$any_cg))
 
-summary(as.factor(df_complete$LingGpType))
+summary(as.factor(df_complete$Relocation))
+print(df_complete$Relocation)
 
+df_complete <- df_complete %>%
+  mutate(relocation_dummy = case_when(Relocation == 0 ~ 0,
+                                      Relocation > 0 ~ 1))
+
+summary(as.factor(df_complete$relocation_dummy))
+
+summary(as.factor(df_complete$SpatialSeg))
+
+#---- BIVARIATE TESTS ----------------------------------------------------------
+
+ggplot(df_complete, aes(x = Year, y = any_cg, color = un.region.name)) +
+  stat_summary(fun = mean, geom = "line", size = 1) +  
+  stat_summary(fun = mean, geom = "point", size = 2) + 
+  labs(
+    title = "Occurrence of any_cg Over Time by Region",
+    x = "Year",
+    y = "Proportion of any_cg",
+    color = "Region"
+  ) +
+  theme_clean() +
+  scale_x_continuous(breaks = seq(min(df_complete$Year), max(df_complete$Year), by = 5)) +
+  theme(legend.position = "bottom")
 
