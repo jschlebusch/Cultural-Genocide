@@ -11,6 +11,8 @@
 ##---- PACKAGES ----------------------------------------------------------------
 library(tidyverse)
 library(ggplot2)
+library(ggthemes)
+library(psych)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
@@ -82,6 +84,11 @@ df_complete <- df_complete %>%
 
 summary(as.factor(df_complete$any_cg))
 
+df_complete <- df_complete %>%
+  group_by(un.region.name, Year) %>%
+  mutate(reg_cg_occurrence = sum(any_cg)) %>%
+  ungroup()
+
 ##---- EDA ---------------------------------------------------------------------
 
 #---- CHECK VARS ---------------------------------------------------------------
@@ -115,16 +122,55 @@ summary(as.factor(df_complete$SpatialSeg))
 
 #---- BIVARIATE TESTS ----------------------------------------------------------
 
-ggplot(df_complete, aes(x = Year, y = any_cg, color = un.region.name)) +
-  stat_summary(fun = mean, geom = "line", size = 1) +  
-  stat_summary(fun = mean, geom = "point", size = 2) + 
+#contingency tables
+ct1 <- table(df_complete$any_cg, df_complete$IndigGp)
+print(ct1)
+
+ct2 <- table(df_complete$any_cg, df_complete$SpatialConc)
+print(ct2)
+
+ct3 <- table(df_complete$any_cg, df_complete$MigrantBackground)
+print(ct3)
+
+ct4 <- table(df_complete$any_cg, df_complete$ViolenceAgainstGroup)
+print(ct4)
+
+ct5 <- table(df_complete$any_cg, df_complete$SDM)
+print(ct5)
+
+ct6 <- table(df_complete$any_cg, df_complete$Relocation)
+print(ct6)
+
+ct7 <- table(df_complete$any_cg, df_complete$SpatialSeg)
+print(ct7)
+
+#Phi coeffs
+c_tables <- list(ct1 = ct1, ct2 = ct2, ct3 = ct3, ct4 = ct4, ct7 = ct7)
+
+phi_coeffs <- list()
+
+for(table_name in names(c_tables)) {
+    phi_coeffs[[table_name]] <- phi(c_tables[[table_name]])
+  }
+
+for(table_name in names(phi_coeffs)) {
+  print(paste("Phi coeffs. for", table_name, ":", round(phi_coeffs[[table_name]], 3)))
+}
+
+
+
+
+
+#---- PLOT ---------------------------------------------------------------------
+ggplot(df_complete, aes(x = Year, y = reg_cg_occurrence, color = un.region.name)) +
+  geom_point() +
+  geom_line() +
   labs(
-    title = "Occurrence of any_cg Over Time by Region",
+    title = "Regional CG Occurrence",
     x = "Year",
-    y = "Proportion of any_cg",
+    y = "Sum Incidence CG",
     color = "Region"
   ) +
   theme_clean() +
-  scale_x_continuous(breaks = seq(min(df_complete$Year), max(df_complete$Year), by = 5)) +
   theme(legend.position = "bottom")
 
