@@ -229,10 +229,6 @@ m1 <- glm(any_cg ~ SDM_lag +
           family = binomial())
 summary(m1)
 
-m1_cluster <- vcovCL(m1, cluster = df_complete$Country)
-m1_clustered_m <- coeftest(m1, vcov = m1_cluster)
-
-
 m1_rse <- coeftest(m1, vcov = vcovHC(m1, type = "HC0"))
 print(m1_rse)
 
