@@ -13,6 +13,8 @@ library(tidyverse)
 library(ggplot2)
 library(ggthemes)
 library(psych)
+library(sandwich)
+library(lmtest)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
@@ -27,6 +29,10 @@ df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
 df_cc <- countrycode::codelist %>%
   select(c(country.name.en, iso3c, un.region.name, un.regionintermediate.name, un.regionsub.name)) %>%
   rename(iso3 = iso3c)
+df_pwt <- readxl::read_excel("pwt1001.xlsx", sheet = 3) %>%
+  select(c(countrycode, year, pop, rgdpe, rgdpo, rgdpna)) %>%
+  rename(iso3 = countrycode,
+         Year = year)
 ##------------------------------------------------------------------------------
 
 ##---- DATA PREPARATION --------------------------------------------------------
@@ -89,6 +95,33 @@ df_complete <- df_complete %>%
   mutate(reg_cg_occurrence = sum(any_cg)) %>%
   ungroup()
 
+df_complete <- df_complete %>%
+  left_join(df_pwt, by = c("iso3", "Year"))
+
+#create CG onset flag
+
+df_complete <- df_complete %>%
+  arrange(Country, Group, Year)
+
+df_complete <- df_complete %>%
+  group_by(Country, Group) %>%
+  mutate(any_cg_onset_flag = ifelse(any_cg == 1 & lag(any_cg, default = 0) == 0, 1, 0)) %>%
+  ungroup()
+
+df_test <- df_complete %>%
+  select(c(Country, Group, Year, any_cg, any_cg_onset_flag)) %>%
+  filter(any_cg == 1)
+
+df_complete <- df_complete %>%
+  mutate(SDM = ifelse(SDM == 99, 0, SDM))
+
+df_complete <- df_complete %>%
+  arrange(Country, Group, Year) %>%
+  group_by(Country, Group) %>%
+  mutate(SDM_lag = lag(SDM, order_by = Year),
+         SDM_2y_lag = lag(SDM, order_by = Year, n = 2)) %>%
+  ungroup()
+
 ##---- EDA ---------------------------------------------------------------------
 
 #---- CHECK VARS ---------------------------------------------------------------
@@ -144,20 +177,28 @@ print(ct6)
 ct7 <- table(df_complete$any_cg, df_complete$SpatialSeg)
 print(ct7)
 
+ct8 <- table(df_complete$any_cg_onset_flag, df_complete$SDM)
+print(ct8)
+
+ct9 <- table(df_complete$any_cg_onset_flag, df_complete$SDM_lag)
+print(ct9)
+
+ct10 <- table(df_complete$any_cg_onset_flag, df_complete$SDM_2y_lag)
+print(ct10)
+
 #Phi coeffs
-c_tables <- list(ct1 = ct1, ct2 = ct2, ct3 = ct3, ct4 = ct4, ct7 = ct7)
+c_tables <- list(ct1 = ct1, ct2 = ct2, ct3 = ct3, ct4 = ct4, ct5 = ct5, ct7 = ct7, ct8 = ct8, ct9 = ct9, ct10 = ct10)
 
 phi_coeffs <- list()
 
 for(table_name in names(c_tables)) {
     phi_coeffs[[table_name]] <- phi(c_tables[[table_name]])
+    
   }
 
 for(table_name in names(phi_coeffs)) {
   print(paste("Phi coeffs. for", table_name, ":", round(phi_coeffs[[table_name]], 3)))
 }
-
-
 
 
 
@@ -174,3 +215,26 @@ ggplot(df_complete, aes(x = Year, y = reg_cg_occurrence, color = un.region.name)
   theme_clean() +
   theme(legend.position = "bottom")
 
+#---- INITIAL MODELS -----------------------------------------------------------
+
+m1 <- glm(any_cg ~ SDM_lag +
+            MigrantBackground +
+            IndigGp +
+            SpatialConc +
+            SizeEst +
+            Polity2 +
+            log(pop) +
+            log(rgdpe),
+          data = df_complete,
+          family = binomial())
+summary(m1)
+
+m1_cluster <- vcovCL(m1, cluster = df_complete$Country)
+m1_clustered_m <- coeftest(m1, vcov = m1_cluster)
+
+
+m1_rse <- coeftest(m1, vcov = vcovHC(m1, type = "HC0"))
+print(m1_rse)
+
+m1_cse <- coeftest(m1, vcov = vcovCL(m1, cluster = df_complete$Country, type = "HC0"))
+print(m1_cse)
