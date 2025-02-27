@@ -15,6 +15,10 @@ library(ggthemes)
 library(psych)
 library(sandwich)
 library(lmtest)
+library(logistf)
+library(brglm2)
+library(fixest)
+library(car)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
@@ -121,6 +125,12 @@ df_complete <- df_complete %>%
   mutate(SDM_lag = lag(SDM, order_by = Year),
          SDM_2y_lag = lag(SDM, order_by = Year, n = 2)) %>%
   ungroup()
+
+df_nochina <- df_complete %>%
+  filter(iso3 != "CHN")
+
+df_noextr <- df_nochina %>%
+  filter(iso3 != "SUN")
 
 ##---- EDA ---------------------------------------------------------------------
 
@@ -234,3 +244,68 @@ print(m1_rse)
 
 m1_cse <- coeftest(m1, vcov = vcovCL(m1, cluster = df_complete$Country, type = "HC0"))
 print(m1_cse)
+
+influencePlot(m1, main = "Influence Plot")
+
+
+m1_re <- feglm(any_cg ~ SDM_lag +
+                  #MigrantBackground +
+                  IndigGp +
+                  SpatialConc +
+                  SizeEst +
+                  Polity2 +
+                  log(pop) +
+                  log(rgdpe) | Country,
+                data = df_complete,
+                family = binomial(),
+                method = "brglmFit")
+
+summary(m1_re)
+
+modelsummary::modelsummary(m1_re, output = "m1_re_test2.html", statistic = "{p.value}")
+
+
+m2_re <- feglm(any_cg_onset_flag ~ SDM_lag +
+                 MigrantBackground +
+                 IndigGp +
+                 SpatialConc +
+                 SizeEst +
+                 Polity2 +
+                 log(pop) +
+                 log(rgdpe) | Country,
+               data = df_complete,
+               family = binomial(),
+               method = "brglmFit")
+
+summary(m2_re)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+m1_re <- logistf(any_cg ~ SDM_lag +
+                      MigrantBackground +
+                      IndigGp +
+                      SpatialConc +
+                      SizeEst +
+                      Polity2 +
+                      log(pop) +
+                      log(rgdpe) +
+                      factor(Country),
+                    data = df_complete)
+
+summary(m1_re)
+
+
+
