@@ -10,8 +10,10 @@
 
 ##---- PACKAGES ----------------------------------------------------------------
 library(tidyverse)
+library(stringr)
 library(ggplot2)
 library(ggthemes)
+library(fmsb)
 library(psych)
 library(sandwich)
 library(lmtest)
@@ -369,16 +371,89 @@ modelsummary::modelsummary(m3_re, output = "m1_re_test3.html", statistic = "{p.v
 
 ##---- MAPPING CULTURAL GENOCIDE -----------------------------------------------
 
-#---- NUMBER OF EVENTS PER TYPE
+#---- NUMBERS
+
+#no. of countries and groups
+df_complete$Country <- str_squish(df_complete$Country)
+n_distinct(df_complete$Country)
+
+n_distinct(df_cg$Country) # CG occurred in 43 Countries
+
+n_distinct(paste(df_cg$Country, df_cg$Group, sep = "_")) # 106 Groups experienced CG
+
+
+#no. of events per type
+
+# a) total incidence for each type:
+
+l_cg_incidence <- colSums(df_cg[, 4:13], na.rm = TRUE)
+df_cg_incidence <- cg_data <- as.data.frame(t(l_cg_incidence))
+
+cg_data <- rbind(
+  rep(max(df_cg_incidence) * 1.1, length(df_cg_incidence)),  
+  rep(0, length(df_cg_incidence)),                  
+  df_cg_incidence                                    
+)
+
+
+radarchart(
+  cg_data,
+  axistype = 1,
+  pcol = "firebrick",
+  pfcol = rgb(1, 0, 0, 0.3),
+  plwd = 2,
+  cglcol = "grey",
+  cglty = 1,
+  axislabcol = "grey",
+  caxislabels = NULL,
+  vlcex = 0.8
+)
+
+title("Total Incidence of Cultural Genocide Types")
+
+png("p4_CG_types_incidence.png", width = 800, height = 600)
 
 #---- ONSETS PER DECADE
+
+df_complete <- df_complete %>%
+  mutate(decade = case_when(
+    Year >= 1945 & Year <= 1949 ~ "1945–1949",
+    Year >= 1950 & Year <= 1959 ~ "1950–1959",
+    Year >= 1960 & Year <= 1969 ~ "1960–1969",
+    Year >= 1970 & Year <= 1979 ~ "1970–1979",
+    Year >= 1980 & Year <= 1989 ~ "1980–1989",
+    Year >= 1990 & Year <= 1999 ~ "1990–1999",
+    Year >= 2000 & Year <= 2009 ~ "2000–2009",
+    Year >= 2010 & Year <= 2020 ~ "2010–2020",
+    TRUE ~ NA_character_
+  ))
+
+df_cg_onsets_by_decade <- df_complete %>%
+  group_by(decade) %>%
+  summarise(num_onsets = sum(any_cg_onset_flag, na.rm = TRUE)) %>%
+  arrange(decade)
+
+ggplot(df_cg_onsets_by_decade, aes(x = decade, y = num_onsets)) +
+  geom_col(fill = "firebrick") +
+  labs(
+    title = "CG Onsets by Decade",
+    x = "Decade",
+    y = "Number of Onsets"
+  ) +
+  theme_clean()
+ggsave("CG_onset_decades.png", width = 8, height = 6)
 
 #---- REGIONAL BREAKDOWN
 
 #No. of cases per region
-#No. of type per region
-#No. of cases per region relative to number of group
 
+
+
+#No. of type per region
+
+
+
+#No. of cases per region relative to number of group
 df_complete <- df_complete %>%
   group_by(vdem_region_name, Year) %>%
   mutate(reg_number_groups = n_distinct(Group)) %>%
