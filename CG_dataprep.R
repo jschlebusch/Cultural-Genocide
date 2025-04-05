@@ -13,7 +13,8 @@ library(tidyverse)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
-df_cg <- readxl::read_xlsx("CG_recoded_final.xlsx") 
+#df_cg <- readxl::read_xlsx("CG_recoded_final.xlsx") 
+df_cg <- readxl::read_xlsx("Cultural Genocide_AndreiRev_DEC2024.xlsx")
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
 df_polity5 <- readxl::read_xlsx("POLITY5-PRC.xlsx", sheet = 1)
 ##------------------------------------------------------------------------------
@@ -75,7 +76,7 @@ print(policy_names)
 df_cg_policies <- df_cg_long1945to2020 %>%
   pivot_wider(names_from = Policy, values_from = Value)
 
-openxlsx::write.xlsx(df_cg_policies, "CG_policy_years.xlsx")
+openxlsx::write.xlsx(df_cg_policies, "CG_policy_years_dec24.xlsx")
 
 #---- POLITY5 ------------------------------------------------------------------
 

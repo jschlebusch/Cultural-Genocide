@@ -22,7 +22,7 @@ library(car)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
-df_cg <- readxl::read_xlsx("CG_policy_years.xlsx")%>%
+df_cg <- readxl::read_xlsx("CG_policy_years_dec24.xlsx")%>%
   rename_with(~ paste0("rev_", .), .cols = 4:12) %>%
   mutate(across(4:12, ~ replace_na(., 0))) %>%
   mutate(any_cg = as.integer(if_any(4:12, ~ . == 1)))
@@ -30,13 +30,18 @@ df_nbp <- haven::read_dta("NBP_groups_final.dta")
 df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
   select(c(iso3c, Year, Polity2)) %>%
   rename(iso3 = iso3c)
-df_cc <- countrycode::codelist %>%
-  select(c(country.name.en, iso3c, un.region.name, un.regionintermediate.name, un.regionsub.name)) %>%
-  rename(iso3 = iso3c)
+#df_cc <- countrycode::codelist %>%
+#  select(c(country.name.en, iso3c, un.region.name, un.regionintermediate.name, un.regionsub.name)) %>%
+#  rename(iso3 = iso3c)
 df_pwt <- readxl::read_excel("pwt1001.xlsx", sheet = 3) %>%
   select(c(countrycode, year, pop, rgdpe, rgdpo, rgdpna)) %>%
   rename(iso3 = countrycode,
          Year = year)
+df_vdem_regions <- readRDS("V-Dem-CY-Full+Others-v15.rds") %>%
+  select(c(country_text_id, year, e_regionpol_7C)) %>%
+  rename(iso3 = country_text_id,
+         Year = year)
+
 ##------------------------------------------------------------------------------
 
 ##---- DATA PREPARATION --------------------------------------------------------
@@ -44,7 +49,7 @@ summary(df_cg)
 summary(df_nbp)
 summary(df_polity)
 summary(df_cc)
-
+summary(df_vdem_regions)
 
 df_nbpcg <- df_nbp %>%
   left_join(df_cg, by = c("Country", "Group", "Year"))
@@ -55,38 +60,68 @@ df_complete <- df_nbpcg %>%
 
 summary(df_complete)
 
-df_complete <- df_complete %>%
-  left_join(df_cc, by = "iso3")
+#df_complete <- df_complete %>%
+#  left_join(df_cc, by = "iso3")
+
+# df_complete <- df_complete %>%
+#   mutate(
+#     un.region.name = case_when(
+#       iso3 == "CSK" ~ "Europe",
+#       iso3 == "DDR"  ~ "Europe",
+#       iso3 == "XKX" ~ "Europe",
+#       iso3 == "YPR" ~ "Asia",
+#       iso3 == "YAR" ~ "Asia",
+#       iso3 == "VDR" ~ "Asia",
+#       iso3 == "TWN" ~ "Asia",
+#       iso3 == "SUN" ~ "Europe",
+#       iso3 == "YUG" ~ "Europe",
+#       TRUE ~ un.region.name
+#     ),
+#     un.regionsub.name = case_when(
+#       iso3 == "CSK" ~ "Eastern Europe",
+#       iso3 == "DDR"  ~ "Western Europe",
+#       iso3 == "XKX" ~ "Southern Europe",
+#       iso3 == "YPR" ~ "Western Asia",
+#       iso3 == "YAR" ~ "Western Asia",
+#       iso3 == "VDR" ~ "South-eastern Asia",
+#       iso3 == "TWN" ~ "Eastern Asia",
+#       iso3 == "SUN" ~ "Eastern Europe",
+#       iso3 == "YUG" ~ "Southern Europe",
+#       TRUE ~ un.regionsub.name  
+#     )
+#   )
+# 
+# summary(df_complete)
 
 df_complete <- df_complete %>%
-  mutate(
-    un.region.name = case_when(
-      iso3 == "CSK" ~ "Europe",
-      iso3 == "DDR"  ~ "Europe",
-      iso3 == "XKX" ~ "Europe",
-      iso3 == "YPR" ~ "Asia",
-      iso3 == "YAR" ~ "Asia",
-      iso3 == "VDR" ~ "Asia",
-      iso3 == "TWN" ~ "Asia",
-      iso3 == "SUN" ~ "Europe",
-      iso3 == "YUG" ~ "Europe",
-      TRUE ~ un.region.name
-    ),
-    un.regionsub.name = case_when(
-      iso3 == "CSK" ~ "Eastern Europe",
-      iso3 == "DDR"  ~ "Western Europe",
-      iso3 == "XKX" ~ "Southern Europe",
-      iso3 == "YPR" ~ "Western Asia",
-      iso3 == "YAR" ~ "Western Asia",
-      iso3 == "VDR" ~ "South-eastern Asia",
-      iso3 == "TWN" ~ "Eastern Asia",
-      iso3 == "SUN" ~ "Eastern Europe",
-      iso3 == "YUG" ~ "Southern Europe",
-      TRUE ~ un.regionsub.name  
-    )
+  left_join(df_vdem_regions, by = c("iso3", "Year"))
+
+df_complete <- df_complete %>%
+  rename(vdem_region = e_regionpol_7C)
+
+df_complete <- df_complete %>%
+  mutate(vdem_region = case_when(
+    iso3 == "CSK" ~ 1,             # Eastern Europe
+    iso3 == "DDR" ~ 5,             # Western Europe and North America
+    iso3 == "SUN" ~ 1,             # Eastern Europe
+    iso3 == "VDR" ~ 6,             # East Asia and the Pacific
+    iso3 %in% c("XKX", "YUG") ~ 1,  # Eastern Europe
+    iso3 %in% c("YAR", "YPR") ~ 3,  # Middle East and North Africa
+    TRUE ~ vdem_region
+  )
   )
 
-summary(df_complete)
+df_complete <- df_complete %>%
+  mutate(vdem_region_name = case_when(
+    vdem_region == 1 ~ "Eastern Europe",
+    vdem_region == 2 ~ "Latin America and the Caribbean",
+    vdem_region == 3 ~ "The Middle East and North Africa",
+    vdem_region == 4 ~ "Sub-Saharan Africa",
+    vdem_region == 5 ~ "Western Europe and North America",
+    vdem_region == 6 ~ "East Asia and the Pacific",
+    vdem_region == 7 ~ "South and Central Asia"
+  ))
+
 
 df_complete <- df_complete %>%
   mutate(across(starts_with("Arrived"), ~ifelse(is.na(.), 0, .)),
@@ -95,7 +130,7 @@ df_complete <- df_complete %>%
 summary(as.factor(df_complete$any_cg))
 
 df_complete <- df_complete %>%
-  group_by(un.region.name, Year) %>%
+  group_by(vdem_region_name, Year) %>%
   mutate(reg_cg_occurrence = sum(any_cg)) %>%
   ungroup()
 
@@ -196,6 +231,11 @@ print(ct9)
 ct10 <- table(df_complete$any_cg_onset_flag, df_complete$SDM_2y_lag)
 print(ct10)
 
+ct11 <- table(df_complete$any_cg, df_complete$ViolenceAgainstGroup)
+print(ct11)
+
+phi(ct11)
+
 #Phi coeffs
 c_tables <- list(ct1 = ct1, ct2 = ct2, ct3 = ct3, ct4 = ct4, ct5 = ct5, ct7 = ct7, ct8 = ct8, ct9 = ct9, ct10 = ct10)
 
@@ -213,7 +253,7 @@ for(table_name in names(phi_coeffs)) {
 
 
 #---- PLOT ---------------------------------------------------------------------
-ggplot(df_complete, aes(x = Year, y = reg_cg_occurrence, color = un.region.name)) +
+ggplot(df_complete, aes(x = Year, y = reg_cg_occurrence, color = vdem_region_name)) +
   geom_point() +
   geom_line() +
   labs(
@@ -224,6 +264,16 @@ ggplot(df_complete, aes(x = Year, y = reg_cg_occurrence, color = un.region.name)
   ) +
   theme_clean() +
   theme(legend.position = "bottom")
+
+ggplot(df_complete, aes(x = as.factor(any_cg), y = Polity2)) +
+  geom_boxplot() +
+  labs(x = "any_cg", y = "Polity2") +
+  theme_clean()
+
+ggplot(df_complete, aes(x = as.factor(any_cg_onset_flag), y = Polity2)) +
+  geom_boxplot() +
+  labs(x = "any_cg", y = "Polity2") +
+  theme_clean()
 
 #---- INITIAL MODELS -----------------------------------------------------------
 
@@ -280,32 +330,77 @@ m2_re <- feglm(any_cg_onset_flag ~ SDM_lag +
 summary(m2_re)
 
 
+m3_re <- feglm(ViolenceAgainstGroup ~ SDM_lag +
+                 MigrantBackground +
+                 IndigGp +
+                 SpatialConc +
+                 SizeEst +
+                 Polity2 +
+                 log(pop) +
+                 log(rgdpe) | Country,
+               data = df_complete,
+               family = binomial(),
+               method = "brglmFit")
+
+summary(m3_re)
 
 
+m3_re <- feglm(any_cg ~ ViolenceAgainstGroup +
+                 SDM_lag +
+                 MigrantBackground +
+                 IndigGp +
+                 SpatialConc +
+                 SizeEst +
+                 Polity2 +
+                 log(pop) +
+                 log(rgdpe) | Country,
+               data = df_complete,
+               family = binomial(),
+               method = "brglmFit")
+
+summary(m3_re)
 
 
+modelsummary::modelsummary(m3_re, output = "m1_re_test3.html", statistic = "{p.value}")
 
 
+## 
 
 
+##---- MAPPING CULTURAL GENOCIDE -----------------------------------------------
 
+#---- NUMBER OF EVENTS PER TYPE
 
+#---- ONSETS PER DECADE
 
+#---- REGIONAL BREAKDOWN
 
+#No. of cases per region
+#No. of type per region
+#No. of cases per region relative to number of group
 
+df_complete <- df_complete %>%
+  group_by(vdem_region_name, Year) %>%
+  mutate(reg_number_groups = n_distinct(Group)) %>%
+  ungroup()
 
-m1_re <- logistf(any_cg ~ SDM_lag +
-                      MigrantBackground +
-                      IndigGp +
-                      SpatialConc +
-                      SizeEst +
-                      Polity2 +
-                      log(pop) +
-                      log(rgdpe) +
-                      factor(Country),
-                    data = df_complete)
+summary(df_complete$reg_number_groups)
 
-summary(m1_re)
+df_complete <- df_complete %>%
+  mutate(reg_cg_relative = reg_cg_occurrence / reg_number_groups)
 
+summary(df_complete$reg_cg_relative)
 
-
+ggplot(df_complete, aes(x = Year, y = reg_cg_relative, color = vdem_region_name)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "Regional CG incidence rel. to no. groups",
+    x = "Year",
+    y = "Relative Incidence CG",
+    color = "Region"
+  ) +
+  theme_clean() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 8))
+ggsave("CG_incidence_regional_rel.png", width = 10, height = 6)
