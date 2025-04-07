@@ -25,9 +25,9 @@ library(car)
 
 ##---- DATA --------------------------------------------------------------------
 df_cg <- readxl::read_xlsx("CG_policy_years_dec24.xlsx")%>%
-  rename_with(~ paste0("rev_", .), .cols = 4:12) %>%
-  mutate(across(4:12, ~ replace_na(., 0))) %>%
-  mutate(any_cg = as.integer(if_any(4:12, ~ . == 1)))
+  rename_with(~ paste0("rev_", .), .cols = 4:13) %>%
+  mutate(across(4:13, ~ replace_na(., 0))) %>%
+  mutate(any_cg = as.integer(if_any(4:13, ~ . == 1)))
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
 df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
   select(c(iso3c, Year, Polity2)) %>%
@@ -50,7 +50,7 @@ df_vdem_regions <- readRDS("V-Dem-CY-Full+Others-v15.rds") %>%
 summary(df_cg)
 summary(df_nbp)
 summary(df_polity)
-summary(df_cc)
+#summary(df_cc)
 summary(df_vdem_regions)
 
 df_nbpcg <- df_nbp %>%
@@ -152,6 +152,37 @@ df_complete <- df_complete %>%
 df_test <- df_complete %>%
   select(c(Country, Group, Year, any_cg, any_cg_onset_flag)) %>%
   filter(any_cg == 1)
+
+#create CG types vars ------ NOT WORKING YET
+df_complete <- df_complete %>%
+  group_by(Country, Group) %>%
+  mutate(across(
+    starts_with("rev_"),
+    ~ ifelse(.x == 1 & lag(.x, default = 0) == 0, 1, 0),
+    .names = "{.col}_onset_flag_part"
+  )) %>%
+  ungroup()
+
+df_test2 <- df_complete %>%
+  select(c(Country, Group, Year, ends_with("onset_flag_part")))
+
+df_complete %>%
+  summarise(across(
+    ends_with("_onset_flag_part"),
+    ~ sum(.x, na.rm = TRUE)
+  ))
+
+onset_summary <- df_complete %>%
+  summarise(across(
+    ends_with("_onset_flag_part"),
+    ~ sum(.x, na.rm = TRUE)
+  )) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Type",
+    values_to = "Onset_Count"
+  )
+###### BELOW WORKING AGAIN
 
 df_complete <- df_complete %>%
   mutate(SDM = ifelse(SDM == 99, 0, SDM))
@@ -412,6 +443,82 @@ radarchart(
 title("Total Incidence of Cultural Genocide Types")
 
 png("p4_CG_types_incidence.png", width = 800, height = 600)
+
+
+#cases of each type
+
+df_cg_long <- df_cg %>%
+  pivot_longer(cols = 4:13, 
+               names_to = "genocide_type", 
+               values_to = "numbers")
+
+df_cg_long <- df_cg_long %>%
+  arrange(Country, Group, genocide_type, Year)
+
+df_cg_long <- df_cg_long %>%
+  group_by(Country, Group, genocide_type) %>%
+  mutate(
+    lag_val = lag(numbers, default = 0),
+    new_episode = numbers == 1 & (lag_val == 0 | Year - lag(Year, default = first(Year)) > 1),
+    episode_id = cumsum(replace_na(new_episode, 0))
+  ) %>%
+  ungroup()
+
+cg_counts <- df_cg_long %>%
+  filter(numbers == 1 & new_episode) %>%
+  count(genocide_type, name = "n_cases")
+
+print(cg_counts)
+
+cg_counts %>%
+  ggplot(aes(x = reorder(genocide_type, n_cases), y = n_cases)) +
+  geom_col(fill = "firebrick") +
+  coord_flip() +
+  labs(
+    title = "CG episodes by Type",
+    x = "Type",
+    y = "Number"
+  ) +
+  theme_clean()
+ggsave("CG_types_count.png", width = 12, height = 6)
+
+
+# radar chart 
+
+cg_counts_types <- cg_counts$n_cases
+genocide_types <- cg_counts$genocide_type
+
+# Convert the counts into a transposed data frame
+df_cg_types <- as.data.frame(t(cg_counts_types))
+
+# Add rows for min and max scaling
+df_cg_types <- rbind(
+  rep(max(df_cg_types) * 1.1, length(df_cg_types)),  # Max row (for scaling)
+  rep(0, length(df_cg_types)),  # Min row (0 for scaling)
+  df_cg_types  # Actual data row for the counts
+)
+
+colnames(df_cg_types) <- c(genocide_types)
+
+# Create the radar chart
+radarchart(
+  df_cg_types,
+  axistype = 1,
+  pcol = "darkblue",  # Line color
+  pfcol = rgb(0, 0, 1, 0.3),  # Fill color
+  plwd = 2,  # Line width
+  cglcol = "grey",  # Grid line color
+  cglty = 1,  # Grid line type (solid)
+  axislabcol = "grey",  # Axis label color
+  caxislabels = NULL,  # Remove axis labels
+  vlcex = 0.8  # Variable label size
+)
+
+title("Cases per Type of Cultural Genocide Types")
+
+
+
+
 
 #---- ONSETS PER DECADE
 
