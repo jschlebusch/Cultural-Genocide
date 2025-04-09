@@ -14,6 +14,7 @@ library(stringr)
 library(ggplot2)
 library(ggthemes)
 library(fmsb)
+library(ggiraphExtra)
 library(psych)
 library(sandwich)
 library(lmtest)
@@ -24,10 +25,10 @@ library(car)
 ##------------------------------------------------------------------------------
 
 ##---- DATA --------------------------------------------------------------------
-df_cg <- readxl::read_xlsx("CG_policy_years_dec24.xlsx")%>%
+df_cg <- readxl::read_xlsx("CG_policy_years_dec24_cleaned.xlsx")%>%
   rename_with(~ paste0("rev_", .), .cols = 4:13) %>%
   mutate(across(4:13, ~ replace_na(., 0))) %>%
-  mutate(any_cg = as.integer(if_any(4:13, ~ . == 1)))
+  mutate(any_cg = as.integer(if_any(4:13, ~ . == 1))) 
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
 df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
   select(c(iso3c, Year, Polity2)) %>%
@@ -44,6 +45,8 @@ df_vdem_regions <- readRDS("V-Dem-CY-Full+Others-v15.rds") %>%
   rename(iso3 = country_text_id,
          Year = year)
 
+
+df_cg_wide <- readxl::read_xlsx("Cultural Genocide_AndreiRev_DEC2024.xlsx")
 ##------------------------------------------------------------------------------
 
 ##---- DATA PREPARATION --------------------------------------------------------
@@ -55,6 +58,9 @@ summary(df_vdem_regions)
 
 df_nbpcg <- df_nbp %>%
   left_join(df_cg, by = c("Country", "Group", "Year"))
+
+df_test <- df_nbpcg %>%
+  filter(is.na(iso3))
 
 df_complete <- df_nbpcg %>%
   left_join(df_polity, by = c("iso3", "Year")) %>%
@@ -109,6 +115,7 @@ df_complete <- df_complete %>%
     iso3 == "VDR" ~ 6,             # East Asia and the Pacific
     iso3 %in% c("XKX", "YUG") ~ 1,  # Eastern Europe
     iso3 %in% c("YAR", "YPR") ~ 3,  # Middle East and North Africa
+    iso3 == "CMR" ~ 4,
     TRUE ~ vdem_region
   )
   )
@@ -123,6 +130,9 @@ df_complete <- df_complete %>%
     vdem_region == 6 ~ "East Asia and the Pacific",
     vdem_region == 7 ~ "South and Central Asia"
   ))
+
+df_test <- df_complete %>%
+  filter(is.na(vdem_region_name))
 
 
 df_complete <- df_complete %>%
@@ -397,8 +407,6 @@ summary(m3_re)
 modelsummary::modelsummary(m3_re, output = "m1_re_test3.html", statistic = "{p.value}")
 
 
-## 
-
 
 ##---- MAPPING CULTURAL GENOCIDE -----------------------------------------------
 
@@ -408,12 +416,14 @@ modelsummary::modelsummary(m3_re, output = "m1_re_test3.html", statistic = "{p.v
 df_complete$Country <- str_squish(df_complete$Country)
 n_distinct(df_complete$Country)
 
-n_distinct(df_cg$Country) # CG occurred in 43 Countries
+n_distinct(df_cg$Country) # CG occurred in 44 Countries
 
 n_distinct(paste(df_cg$Country, df_cg$Group, sep = "_")) # 106 Groups experienced CG
 
 
 #no. of events per type
+
+sum(df_complete$any_cg)
 
 # a) total incidence for each type:
 
@@ -441,8 +451,6 @@ radarchart(
 )
 
 title("Total Incidence of Cultural Genocide Types")
-
-png("p4_CG_types_incidence.png", width = 800, height = 600)
 
 
 #cases of each type
@@ -488,14 +496,12 @@ ggsave("CG_types_count.png", width = 12, height = 6)
 cg_counts_types <- cg_counts$n_cases
 genocide_types <- cg_counts$genocide_type
 
-# Convert the counts into a transposed data frame
 df_cg_types <- as.data.frame(t(cg_counts_types))
 
-# Add rows for min and max scaling
 df_cg_types <- rbind(
-  rep(max(df_cg_types) * 1.1, length(df_cg_types)),  # Max row (for scaling)
-  rep(0, length(df_cg_types)),  # Min row (0 for scaling)
-  df_cg_types  # Actual data row for the counts
+  rep(max(df_cg_types) * 1.1, length(df_cg_types)),  
+  rep(0, length(df_cg_types)),  
+  df_cg_types  
 )
 
 colnames(df_cg_types) <- c(genocide_types)
@@ -504,19 +510,106 @@ colnames(df_cg_types) <- c(genocide_types)
 radarchart(
   df_cg_types,
   axistype = 1,
-  pcol = "darkblue",  # Line color
-  pfcol = rgb(0, 0, 1, 0.3),  # Fill color
-  plwd = 2,  # Line width
-  cglcol = "grey",  # Grid line color
-  cglty = 1,  # Grid line type (solid)
-  axislabcol = "grey",  # Axis label color
-  caxislabels = NULL,  # Remove axis labels
-  vlcex = 0.8  # Variable label size
+  pcol = "darkblue",  
+  pfcol = rgb(0, 0, 1, 0.3),  
+  plwd = 2,  
+  cglcol = "grey",  
+  cglty = 1,  
+  axislabcol = "grey",  
+  caxislabels = NULL,  
+  vlcex = 0.8  
 )
 
 title("Cases per Type of Cultural Genocide Types")
 
 
+
+## combined
+
+data1 <- cg_data[3, ]
+data2 <- df_cg_types[3, ]
+
+common_vars <- intersect(colnames(data1), colnames(data2))
+data1 <- data1[, common_vars]
+data2 <- data2[, common_vars]
+
+combined_data <- rbind(
+  rep(max(c(as.numeric(data1), as.numeric(data2))) * 1.1, length(common_vars)),  
+  rep(0, length(common_vars)),                                                  
+  data1,
+  data2
+)
+
+rownames(combined_data) <- c("Max", "Min", "Total Incidence", "Cases per Type")
+
+radarchart(
+  combined_data,
+  axistype = 1,
+  pcol = c("firebrick", "darkblue"),
+  plwd = 2,                           
+  cglcol = "grey",
+  cglty = 1,
+  axislabcol = "grey",
+  caxislabels = NULL,
+  vlcex = 0.8
+)
+
+legend(
+  x = "topright",
+  legend = c("Total Incidence", "Cases per Type"),
+  col = c("firebrick", "darkblue"),
+  lty = 1,
+  lwd = 2,
+  bty = "n"
+)
+
+
+## relative numbers
+
+onset_raw <- cg_data[3, ]
+incidence_raw <- df_cg_types[3, ]
+
+common_vars <- intersect(colnames(onset_raw), colnames(incidence_raw))
+onset_raw <- onset_raw[, common_vars]
+incidence_raw <- incidence_raw[, common_vars]
+
+onset_norm <- as.numeric(onset_raw) / max(as.numeric(onset_raw))
+incidence_norm <- as.numeric(incidence_raw) / max(as.numeric(incidence_raw))
+
+normalized_data <- rbind(
+  rep(1, length(common_vars)),    
+  rep(0, length(common_vars)),    
+  onset_norm,
+  incidence_norm                
+)
+
+colnames(normalized_data) <- common_vars
+rownames(normalized_data) <- c("Max", "Min", "Onset", "Incidence")
+
+normalized_data <- as.data.frame(normalized_data)
+
+radarchart(
+  normalized_data,
+  axistype = 1,
+  pcol = c("firebrick", "darkblue"),
+  plwd = 2,
+  #cglcol = "grey",
+  cglty = 2,
+  axislabcol = "grey",
+  caxislabels = c("0", "0.25", "0.5", "0.75", "1"),
+  vlcex = 0.8
+)
+
+par(mar=c(0,0,0,0))
+
+legend(
+  x = "bottomleft",
+  legend = c("Onset (Normalized)", "Incidence (Normalized)"),
+  col = c("firebrick", "darkblue"),
+  lty = 1,
+  lwd = 2,
+  bty = "n"
+)
 
 
 
@@ -540,6 +633,8 @@ df_cg_onsets_by_decade <- df_complete %>%
   summarise(num_onsets = sum(any_cg_onset_flag, na.rm = TRUE)) %>%
   arrange(decade)
 
+view(df_cg_onsets_by_decade)
+
 ggplot(df_cg_onsets_by_decade, aes(x = decade, y = num_onsets)) +
   geom_col(fill = "firebrick") +
   labs(
@@ -548,16 +643,78 @@ ggplot(df_cg_onsets_by_decade, aes(x = decade, y = num_onsets)) +
     y = "Number of Onsets"
   ) +
   theme_clean()
-ggsave("CG_onset_decades.png", width = 8, height = 6)
+ggsave("p3_updated.png", width = 8, height = 6)
 
 #---- REGIONAL BREAKDOWN
 
 #No. of cases per region
+ ##use wide dataset
 
+df_cg_wide <- df_cg_wide %>%
+  mutate(Periods = str_replace_all(Periods, "\\*", ""))
+
+df_cg_wide <- df_cg_wide %>%
+  separate_rows(Periods, sep = ";")
+
+df_cg_wide <- df_cg_wide %>%
+  mutate(Periods = str_replace_all(Periods, " ", ""))
+
+df_cg_wide <- df_cg_wide %>%
+  mutate(start_year = str_sub(Periods, 1, 4))
+
+df_cg_wide <- df_cg_wide %>%
+  mutate(start_year = as.numeric(start_year),  
+         decade = case_when(
+           start_year < 1950 ~ "Before 1950",
+           start_year >= 1950 & start_year <= 1959 ~ "1950-1959",
+           start_year >= 1960 & start_year <= 1969 ~ "1960-1969",
+           start_year >= 1970 & start_year <= 1979 ~ "1970-1979",
+           start_year >= 1980 & start_year <= 1989 ~ "1980-1989",
+           start_year >= 1990 & start_year <= 1999 ~ "1990-1999",
+           start_year >= 2000 & start_year <= 2009 ~ "2000-2009",
+           start_year >= 2010 & start_year <= 2020 ~ "2010-2020",
+           TRUE ~ "Unknown"  
+         ))
+
+df_cases_per_decade_full <- df_cg_wide %>%
+  count(decade)
 
 
 #No. of type per region
+df_regions <- df_complete %>%
+  select(Country, iso3, Year, vdem_region_name, vdem_region) %>%
+  rename(start_year = Year) %>%
+  distinct()
 
+df_cg_wide <- df_cg_wide %>%
+  left_join(df_regions, by = c("Country", "start_year"))
+
+df_test2 <- df_cg_wide %>%
+  filter(is.na(vdem_region_name))
+
+df_cg_wide <- df_cg_wide %>%
+  mutate(vdem_region_name = case_when(
+    Country == "Australia" ~ "East Asia and the Pacific",
+    Country == "USSR" ~ "Eastern Europe",
+    Country == "Tunisia" ~ "The Middle East and North Africa",
+    Country == "Vietnam" ~ "East Asia and the Pacific", 
+    TRUE ~ vdem_region_name
+  ))
+
+
+df_regional_counts <- df_cg_wide %>%
+  group_by(vdem_region_name, Policy) %>%
+  count()
+
+df_regional_counts <- df_regional_counts %>%
+  mutate(Policy = as.factor(Policy))
+
+ggplot(df_regional_counts, aes(x = factor(vdem_region_name), y = factor(Policy), fill = n)) +
+  geom_tile() +  
+  scale_fill_gradient(low = "white", high = "blue") + 
+  theme_minimal() +
+  labs(title = "CG Type per Region", x = "Region", y = "Policy") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
 #No. of cases per region relative to number of group
@@ -569,7 +726,7 @@ df_complete <- df_complete %>%
 summary(df_complete$reg_number_groups)
 
 df_complete <- df_complete %>%
-  mutate(reg_cg_relative = reg_cg_occurrence / reg_number_groups)
+  mutate(reg_cg_relative = reg_cg_occurrence / reg_number_groups) 
 
 summary(df_complete$reg_cg_relative)
 

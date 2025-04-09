@@ -76,7 +76,7 @@ print(policy_names)
 df_cg_policies <- df_cg_long1945to2020 %>%
   pivot_wider(names_from = Policy, values_from = Value)
 
-openxlsx::write.xlsx(df_cg_policies, "CG_policy_years_dec24.xlsx")
+openxlsx::write.xlsx(df_cg_policies, "CG_policy_years_dec24_cleaned.xlsx")
 
 #---- POLITY5 ------------------------------------------------------------------
 
