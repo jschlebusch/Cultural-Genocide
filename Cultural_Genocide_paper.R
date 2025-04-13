@@ -28,7 +28,11 @@ library(car)
 df_cg <- readxl::read_xlsx("CG_policy_years_dec24_cleaned.xlsx")%>%
   rename_with(~ paste0("rev_", .), .cols = 4:13) %>%
   mutate(across(4:13, ~ replace_na(., 0))) %>%
-  mutate(any_cg = as.integer(if_any(4:13, ~ . == 1))) 
+  mutate(any_cg = as.integer(if_any(4:13, ~ . == 1))) %>%
+  mutate(Country = case_when(
+    Country == "Myanmar" ~ "Myanmar [Burma]",
+    TRUE ~ Country
+  ))
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
 df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
   select(c(iso3c, Year, Polity2)) %>%
@@ -58,6 +62,39 @@ summary(df_vdem_regions)
 
 df_nbpcg <- df_nbp %>%
   left_join(df_cg, by = c("Country", "Group", "Year"))
+
+## include language and religious bans as form of cultural genocide
+
+df_nbpcg <- df_nbpcg %>%
+  mutate(lang_ban = if_else(
+    if_any(starts_with("RestriPublicSpeaking") | starts_with("RestriNaming"), ~ .x == 1),
+    1,
+    0
+  ))
+
+summary(as.factor(df_nbpcg$lang_ban))
+
+summary(as.factor(df_nbpcg$RestriNaming1))
+
+df_nbpcg <- df_nbpcg %>%
+  mutate(reli_ban = if_else(
+    if_any(starts_with("RestriReli") | starts_with("RestriWorship"), ~ .x == 1),
+    1,
+    0
+  ))
+
+summary(as.factor(df_nbpcg$reli_ban))
+
+#all together
+df_nbpcg <- df_nbpcg %>%
+  mutate(any_cg_ban = if_else(
+    if_any(c(any_cg, lang_ban, reli_ban), ~ .x == 1),
+    1,
+    0
+  ))
+
+summary(as.factor(df_nbpcg$any_cg))
+summary(as.factor(df_nbpcg$any_cg_ban))
 
 df_test <- df_nbpcg %>%
   filter(is.na(iso3))
@@ -706,6 +743,8 @@ df_regional_counts <- df_cg_wide %>%
   group_by(vdem_region_name, Policy) %>%
   count()
 
+writexl::write_xlsx(df_regional_counts, "cg_regional_counts.xlsx")
+
 df_regional_counts <- df_regional_counts %>%
   mutate(Policy = as.factor(Policy))
 
@@ -715,6 +754,44 @@ ggplot(df_regional_counts, aes(x = factor(vdem_region_name), y = factor(Policy),
   theme_minimal() +
   labs(title = "CG Type per Region", x = "Region", y = "Policy") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#simply cases per region
+
+df_region_counts_any <- df_regional_counts %>%
+  group_by(vdem_region_name) %>%
+  mutate(cg_count = sum(n)) %>%
+  select(c(vdem_region_name, cg_count)) %>%
+  distinct()
+
+ggplot(df_region_counts_any, aes(x = vdem_region_name, y = cg_count)) +
+  geom_col(fill = "firebrick") +
+  labs(
+    title = "CG Cases per Region",
+    x = "Region",
+    y = "Number of CG cases"
+  ) +
+  theme_clean2()
+
+
+#simply no. of type: 
+
+df_type_counts <- df_regional_counts %>%
+  group_by(Policy) %>%
+  mutate(type_count = sum(n)) %>%
+  select(c(Policy, type_count)) %>%
+  distinct()
+
+ggplot(df_type_counts, aes(x = Policy, y = type_count)) +
+  geom_col(fill = "firebrick") +
+  labs(
+    title = "CG Cases per Type",
+    x = "Policy",
+    y = "Number"
+  ) +
+  theme_clean2()
+
+ggsave("p11_cg_types_count.png", width = 8, height = 6)
 
 
 #No. of cases per region relative to number of group
