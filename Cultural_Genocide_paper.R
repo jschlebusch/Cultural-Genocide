@@ -11,6 +11,7 @@
 ##---- PACKAGES ----------------------------------------------------------------
 library(tidyverse)
 library(stringr)
+library(countrycode)
 library(ggplot2)
 library(ggthemes)
 library(fmsb)
@@ -33,24 +34,67 @@ df_cg <- readxl::read_xlsx("CG_policy_years_dec24_cleaned.xlsx")%>%
     Country == "Myanmar" ~ "Myanmar [Burma]",
     TRUE ~ Country
   ))
+
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
+
 df_polity <- readxl::read_xlsx("POLITY5_annual.xlsx") %>%
   select(c(iso3c, Year, Polity2)) %>%
   rename(iso3 = iso3c)
+
 #df_cc <- countrycode::codelist %>%
-#  select(c(country.name.en, iso3c, un.region.name, un.regionintermediate.name, un.regionsub.name)) %>%
-#  rename(iso3 = iso3c)
+  #select(c(country.name.en, iso3c, un.region.name, un.regionintermediate.name, un.regionsub.name)) %>%
+  #rename(iso3 = iso3c)
+
 df_pwt <- readxl::read_excel("pwt1001.xlsx", sheet = 3) %>%
   select(c(countrycode, year, pop, rgdpe, rgdpo, rgdpna)) %>%
   rename(iso3 = countrycode,
          Year = year)
+
 df_vdem_regions <- readRDS("V-Dem-CY-Full+Others-v15.rds") %>%
   select(c(country_text_id, year, e_regionpol_7C)) %>%
   rename(iso3 = country_text_id,
          Year = year)
 
-
 df_cg_wide <- readxl::read_xlsx("Cultural Genocide_AndreiRev_DEC2024.xlsx")
+
+df_tmk_annual <- readxl::read_xlsx("tmk_annual_release_1.2.xlsx")
+
+df_cc <- countrycode::codelist %>%
+  select(c(cown, iso3c)) %>%
+  rename(pl.ccode = cown)
+
+df_tmk_annual <- df_tmk_annual %>%
+  left_join(df_cc)
+
+df_tmk_genocides <- readxl::read_xlsx("TMK_genocide_ethn_reli_targets.xlsx") %>%
+  select(c(pl.ccode, actor.name, event.name.description, part.civ.war, part.int.war, year,
+           intent.4.a.actor.org.pln, intent.4.b.actor.stat.int, ends_with(".name"),
+           #ends_with("eth.nm"), ends_with("eth.id"), ends_with("tmk.pol"),
+           total.deaths, tmk.end.type))
+
+df_tmk_genocides <- df_tmk_genocides %>%
+  left_join(df_cc) 
+
+df_tmk_genocides <- df_tmk_genocides %>%
+  rename(iso3 = iso3c,
+         Year = year)
+
+n_distinct(df_tmk_genocides$pl.ccode)
+
+df_tmk_genocides_long <- df_tmk_genocides %>%
+  pivot_longer(
+    cols = c(group1.name, group2.name, group3.name, group4.name, group5.name),
+    names_to = "group_var",
+    values_to = "target_group"
+  )
+
+df_tmk_genocides_long <- df_tmk_genocides_long %>%
+  dplyr::filter(target_group != "NA")
+
+table(is.na(df_tmk_genocides_long$target_group))
+
+n_distinct(df_tmk_genocides_long$target_group)
+
 ##------------------------------------------------------------------------------
 
 ##---- DATA PREPARATION --------------------------------------------------------
@@ -92,6 +136,9 @@ df_nbpcg <- df_nbpcg %>%
     1,
     0
   ))
+
+df_nbpcg <- df_nbpcg %>%
+  mutate(any_cg_ban = ifelse(is.na(any_cg_ban), 0, any_cg_ban))
 
 summary(as.factor(df_nbpcg$any_cg))
 summary(as.factor(df_nbpcg$any_cg_ban))
@@ -138,6 +185,8 @@ summary(df_complete)
 # 
 # summary(df_complete)
 
+
+# regions to CG dataset
 df_complete <- df_complete %>%
   left_join(df_vdem_regions, by = c("iso3", "Year"))
 
@@ -176,15 +225,84 @@ df_complete <- df_complete %>%
   mutate(across(starts_with("Arrived"), ~ifelse(is.na(.), 0, .)),
          any_cg = ifelse(is.na(any_cg), 0, any_cg))
 
-summary(as.factor(df_complete$any_cg))
+summary(as.factor(df_complete$any_cg_ban))
 
 df_complete <- df_complete %>%
   group_by(vdem_region_name, Year) %>%
-  mutate(reg_cg_occurrence = sum(any_cg)) %>%
+  mutate(reg_cg_occurrence = sum(any_cg_ban)) %>%
   ungroup()
 
 df_complete <- df_complete %>%
   left_join(df_pwt, by = c("iso3", "Year"))
+
+#regions to genocide dataset
+df_tmk_genocides <- df_tmk_genocides %>%
+  left_join(df_vdem_regions, by = c("iso3", "Year"))
+
+df_tmk_genocides <- df_tmk_genocides %>%
+  rename(vdem_region = e_regionpol_7C) %>%
+  filter(!is.na(vdem_region)) # remove Government of Serbia during Kosovo war -- discuss how to treat case
+
+df_tmk_genocides <- df_tmk_genocides %>%
+  mutate(vdem_region_name = case_when(
+    vdem_region == 1 ~ "Eastern Europe",
+    vdem_region == 2 ~ "Latin America and the Caribbean",
+    vdem_region == 3 ~ "The Middle East and North Africa",
+    vdem_region == 4 ~ "Sub-Saharan Africa",
+    vdem_region == 5 ~ "Western Europe and North America",
+    vdem_region == 6 ~ "East Asia and the Pacific",
+    vdem_region == 7 ~ "South and Central Asia"
+  ))
+
+df_test2 <- df_tmk_genocides %>%
+  filter(is.na(vdem_region_name))
+
+df_tmk_genocides <- df_tmk_genocides %>%
+  mutate(any_genocide = 1)
+
+summary(as.factor(df_tmk_genocides$any_genocide))
+
+df_tmk_genocides <- df_tmk_genocides %>%
+  group_by(vdem_region_name, Year) %>%
+  mutate(reg_genocide_occurrence = sum(any_genocide)) %>%
+  ungroup()
+
+n_distinct(df_tmk_genocides$pl.ccode)
+
+#regions to long version of genocide df
+df_tmk_genocides_long <- df_tmk_genocides_long %>%
+  left_join(df_vdem_regions, by = c("iso3", "Year"))
+
+df_tmk_genocides_long <- df_tmk_genocides_long %>%
+  rename(vdem_region = e_regionpol_7C) %>%
+  filter(!is.na(vdem_region)) # remove Government of Serbia during Kosovo war -- discuss how to treat case
+
+df_tmk_genocides_long <- df_tmk_genocides_long %>%
+  mutate(vdem_region_name = case_when(
+    vdem_region == 1 ~ "Eastern Europe",
+    vdem_region == 2 ~ "Latin America and the Caribbean",
+    vdem_region == 3 ~ "The Middle East and North Africa",
+    vdem_region == 4 ~ "Sub-Saharan Africa",
+    vdem_region == 5 ~ "Western Europe and North America",
+    vdem_region == 6 ~ "East Asia and the Pacific",
+    vdem_region == 7 ~ "South and Central Asia"
+  ))
+
+df_test3 <- df_tmk_genocides_long %>%
+  filter(is.na(vdem_region_name))
+
+df_tmk_genocides_long <- df_tmk_genocides_long %>%
+  mutate(any_genocide = 1)
+
+summary(as.factor(df_tmk_genocides_long$any_genocide))
+
+df_tmk_genocides_long <- df_tmk_genocides_long %>%
+  group_by(vdem_region_name, Year) %>%
+  mutate(reg_genocide_occurrence = sum(any_genocide)) %>%
+  ungroup()
+
+n_distinct(df_tmk_genocides_long$pl.ccode)
+n_distinct(df_tmk_genocides_long$target_group)
 
 #create CG onset flag
 
@@ -354,6 +472,88 @@ ggplot(df_complete, aes(x = as.factor(any_cg_onset_flag), y = Polity2)) +
   geom_boxplot() +
   labs(x = "any_cg", y = "Polity2") +
   theme_clean()
+
+
+ggplot(df_tmk_genocides, aes(x = Year, y = reg_genocide_occurrence, color = vdem_region_name)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "Regional Genocide Incidence (TMK)",
+    x = "Year",
+    y = "No. of ongoing genocides",
+    color = "Region"
+  ) +
+  theme_clean() +
+  theme(legend.position = "bottom")
+
+
+ggplot(df_tmk_genocides_long, aes(x = Year, y = reg_genocide_occurrence, color = vdem_region_name)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "R. Genocide Incidence (TMK), group level",
+    x = "Year",
+    y = "No. of ongoing genocides",
+    color = "Region"
+  ) +
+  theme_clean() +
+  theme(legend.position = "bottom")
+
+
+#--- comparison plot
+
+df_genocide_time <- df_tmk_genocides_long %>%
+  group_by(Year) %>%
+  mutate(annual_genocide_inc = sum(any_genocide)) %>%
+  ungroup()
+
+df_genocide_time <- df_genocide_time %>%
+  select(c(Year, annual_genocide_inc)) %>%
+  distinct()
+
+
+df_cg_time <- df_complete %>%
+  group_by(Year) %>%
+  mutate(annual_cg_incidence = sum(any_cg_ban)) %>%
+  ungroup
+
+df_cg_time <- df_cg_time %>%
+  select(c(Year, annual_cg_incidence)) %>%
+  distinct()
+
+df_both_time <- df_cg_time %>%
+  left_join(df_genocide_time) 
+
+df_both_time <- df_both_time %>%
+  mutate(annual_cg_incidence = replace_na(annual_cg_incidence, 0))
+
+df_both_time <- df_both_time %>%
+  rename(Genocide = annual_genocide_inc,
+         `Cultural Genocide` = annual_cg_incidence)
+
+summary(df_both_time$`Cultural Genocide`)
+
+
+df_both_long <- df_both_time %>%
+  pivot_longer(
+    cols = c(`Cultural Genocide`, Genocide),
+    names_to = "Event",
+    values_to = "Incidence"
+  )
+
+df_both_long <- df_both_long %>%
+  mutate(Incidence = ifelse(is.na(Incidence), 0, Incidence))
+
+ggplot(df_both_long, aes(x = Year, y = Incidence, linetype = Event)) +
+  geom_line(size = 1, na.rm = FALSE) +
+  labs(
+    title = "CG and Genocide over Time",
+    x = "Year",
+    y = "Incidence",
+    color = "Event"
+  ) +
+  theme_clean() +
+  theme(legend.position = "bottom")
 
 #---- INITIAL MODELS -----------------------------------------------------------
 
@@ -820,3 +1020,11 @@ ggplot(df_complete, aes(x = Year, y = reg_cg_relative, color = vdem_region_name)
   theme(legend.position = "bottom",
         legend.text = element_text(size = 8))
 ggsave("CG_incidence_regional_rel.png", width = 10, height = 6)
+
+
+
+##---- STATE-LEVEL VARS ------------------------------------------
+
+
+
+

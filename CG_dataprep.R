@@ -17,6 +17,8 @@ library(tidyverse)
 df_cg <- readxl::read_xlsx("Cultural Genocide_AndreiRev_DEC2024.xlsx")
 df_nbp <- haven::read_dta("NBP_groups_final.dta")
 df_polity5 <- readxl::read_xlsx("POLITY5-PRC.xlsx", sheet = 1)
+
+df_tmk_event <- readxl::read_xls("tmk_events_release_1.2.xls")
 ##------------------------------------------------------------------------------
 
 ##---- DATA PREP ---------------------------------------------------------------
@@ -100,3 +102,15 @@ df_polity5 <- df_polity5%>%
          Year <= 2020)
 
 openxlsx::write.xlsx(df_polity5, "POLITY5_annual.xlsx")
+
+#---- TMK Genocide - EVENTS ----------------------------------------------------
+
+df_tmk_event <- df_tmk_event %>%
+  filter(is.government.actor == 1,
+         tmk.ordinal > 3)
+
+df_tmk_ethnic <- df_tmk_event %>%
+  filter(group1.tmk.eth == 1 | group1.tmk.rel == 1 | group2.tmk.eth == 1 | group2.tmk.rel == 1 | group3.tmk.eth == 1 | group3.tmk.rel == 1 | group4.tmk.eth == 1 | group4.tmk.rel == 1 | group5.tmk.eth == 1 | group5.tmk.rel == 1)
+
+openxlsx::write.xlsx(df_tmk_event, "TMK_genocide_events.xlsx")
+openxlsx::write.xlsx(df_tmk_ethnic, "TMK_genocide_ethn_reli_targets.xlsx")
